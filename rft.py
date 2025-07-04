@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import os
+from engagement_tracker import EngagementTracker
 
 # --- Enhanced Face/Eye Tracking with Tilt Robustness and Improved Skin Color Estimation ---
 
@@ -206,6 +207,11 @@ def main():
             print("Error: Could not open webcam.")
             return
         print("Running on webcam.")
+        video_path = "webcam"
+
+    # Initialize EngagementTracker
+    tracker = EngagementTracker()
+    tracker.set_video_name(video_path)
 
     window_name = 'Face Engagement Analyzer'
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -213,13 +219,6 @@ def main():
 
     engagement_level = 0.0
     decay_rate = 0.02
-    rise_value = 1.0
-
-    last_gaze_status = "No Face"
-    last_engagement = 0.0
-
-    last_skin_color = "Unknown"
-    no_user_counter = 0
 
     while True:
         ret, frame = cap.read()
@@ -233,21 +232,14 @@ def main():
         results = face_mesh.process(rgb)
 
         engagement = 0.0
-        gaze_status = "No Face"
-        skin_color = "Unknown"
-        user_found = False
-
         if results.multi_face_landmarks:
-            user_found = True
             for face_landmarks in results.multi_face_landmarks:
                 mp_drawing.draw_landmarks(
                     display, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION,
                     mp_drawing.DrawingSpec(color=(0,255,0), thickness=1, circle_radius=1),
                     mp_drawing.DrawingSpec(color=(0,0,255), thickness=1)
                 )
-                # Example engagement logic: if face is detected, set engagement high
                 engagement = 1.0
-                gaze_status = "Face Detected"
                 break
 
         # Engagement smoothing
@@ -256,29 +248,11 @@ def main():
         else:
             engagement_level = max(0.0, engagement_level - decay_rate)
 
-        # Draw engagement meter (reuse your function if defined)
-        if 'draw_engagement_meter' in globals():
-            draw_engagement_meter(display, engagement_level)
+        # Add engagement score to tracker
+        tracker.add_score(engagement_level)
 
-        if gaze_status != "No Face":
-            last_gaze_status = gaze_status
-
-        if user_found:
-            if 'style_text' in globals():
-                style_text(display, f"Skin Color: {skin_color}", (30, display.shape[0]-60), font_scale=0.8, color=(255,200,100), thickness=2)
-            no_user_counter = 0
-        else:
-            no_user_counter += 1
-            if no_user_counter > 5:
-                if 'style_text' in globals():
-                    style_text(display, "No user detected", (30, display.shape[0]-60), font_scale=0.9, color=(0,0,255), thickness=3)
-            else:
-                if 'style_text' in globals():
-                    style_text(display, f"Skin Color: {last_skin_color}", (30, display.shape[0]-60), font_scale=0.8, color=(255,200,100), thickness=2)
-
-        if 'style_text' in globals():
-            style_text(display, f"Gaze: {last_gaze_status}", (30, display.shape[0]-30), font_scale=0.8, color=(0,255,255), thickness=2)
-            style_text(display, "Press 'Q' to Quit", (display.shape[1]-220, display.shape[0]-10), font_scale=0.7, color=(200,200,200), thickness=2)
+        # Draw engagement meter
+        draw_engagement_meter(display, engagement_level)
 
         cv2.imshow(window_name, enhance_contrast(display))
 
@@ -288,6 +262,9 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
+
+    # Save engagement data to Excel
+    tracker.save_to_excel()
 
 if __name__ == "__main__":
     main()
